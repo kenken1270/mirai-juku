@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BookOpen, MessageCircle, Star, Brain, Settings, Volume2, ChevronRight, RefreshCw, Trophy, Globe, GraduationCap, School, List, PlayCircle, CheckCircle, Clock, Filter, PenTool, Book, Gamepad2, Smile, Sparkles, XCircle, Timer, User, LogOut, BarChart3, AlertCircle, ArrowLeft, Calendar, TrendingUp, Award, Flame, Zap, Languages, Eye, EyeOff, Download, PieChart, Loader } from 'lucide-react';
+import { BookOpen, MessageCircle, Star, Brain, Settings, Volume2, ChevronRight, RefreshCw, Trophy, Globe, GraduationCap, School, List, PlayCircle, CheckCircle, Clock, Filter, PenTool, Book, Gamepad2, Smile, Sparkles, XCircle, Timer, User, LogOut, BarChart3, AlertCircle, ArrowLeft, Calendar, TrendingUp, Award, Flame, Zap, Languages, Eye, EyeOff, Download, PieChart, Loader, Menu, LayoutDashboard } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
@@ -20,7 +20,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = "mirai-juku-live"; 
 
-// --- CONSTANTS & DATA (Moved to top for safety) ---
+// --- TRANSLATIONS ---
 const TRANSLATIONS = {
   zh: {
     app_name: "未来塾 (Mirai Juku)",
@@ -224,6 +224,7 @@ const TRANSLATIONS = {
   }
 };
 
+// --- DATA (Unchanged) ---
 const IRODORI_DATA = {
   1: {
     title: '第1課：はじめまして (初次见面)',
@@ -452,7 +453,7 @@ const LoginScreen = ({ onLogin, lang, setLang }) => {
             await updateDoc(userRef, { progressByLesson: userData.progressByLesson });
         }
       } else {
-        // Create new user
+        // Create new user if not exists
         const initialData = {
           id: userId,
           name: userId === 'admin' ? 'Teacher' : `Student ${userId}`,
@@ -485,8 +486,8 @@ const LoginScreen = ({ onLogin, lang, setLang }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 relative">
-      <div className="absolute top-4 right-4">
+    <div className="flex flex-col items-center justify-center min-h-dvh bg-gray-50 p-4 relative w-full overflow-hidden">
+      <div className="absolute top-4 right-4 z-10">
         <LanguageToggle lang={lang} setLang={setLang} />
       </div>
       <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm text-center transform transition-all hover:scale-[1.01]">
@@ -627,49 +628,73 @@ const TeacherDashboard = ({ currentUser, onLogout, lang, setLang }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex justify-center items-center p-0 sm:p-4">
-      <div className="w-full max-w-4xl h-full sm:h-[850px] bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative flex flex-col">
-        <header className="bg-white px-6 py-4 shadow-sm z-10 border-b border-gray-100 flex justify-between items-center">
-          <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2"><School className="text-indigo-500" size={24} /> {t.teacher_dashboard}</h1>
-          <div className="flex items-center gap-3">
+    <div className="flex h-screen w-full bg-gray-50">
+      {/* Responsive Sidebar / Header */}
+      <aside className="hidden md:flex w-64 flex-col border-r bg-white p-4 space-y-6">
+        <div className="flex items-center gap-2 text-indigo-600 px-2">
+          <School size={28} />
+          <h1 className="text-xl font-black tracking-tight">{t.app_name}</h1>
+        </div>
+        <nav className="flex-1 space-y-1">
+          <div className="px-2 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Menu</div>
+          <button className="w-full flex items-center gap-3 px-3 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-bold transition-colors">
+            <LayoutDashboard size={18} /> {t.teacher_dashboard}
+          </button>
+        </nav>
+        <div className="border-t pt-4 space-y-2">
+           <div className="flex items-center justify-between px-2">
               <LanguageToggle lang={lang} setLang={setLang} />
-              <button onClick={onLogout} className="flex items-center gap-1 text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"><LogOut size={14} /> {t.logout}</button>
-          </div>
-        </header>
-        <main className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex justify-center items-center h-full"><Loader size={40} className="text-indigo-500 animate-spin" /></div>
-          ) : selectedStudent ? ( 
-            <StudentDetail student={selectedStudent} onBack={() => setSelectedStudent(null)} /> 
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.total_students}</div><div className="text-3xl font-black text-gray-800">{students.length}</div></div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.avg_level}</div><div className="text-3xl font-black text-indigo-600">{(students.reduce((acc, s) => acc + s.level, 0) / (students.length || 1)).toFixed(1)}</div></div>
-              </div>
-              <div className="flex justify-between items-center mb-4">
+              <button onClick={onLogout} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LogOut size={18} /></button>
+           </div>
+        </div>
+      </aside>
+
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 w-full bg-white z-20 border-b border-gray-100 px-4 py-3 flex justify-between items-center">
+         <div className="flex items-center gap-2 text-indigo-600">
+           <School size={24} />
+           <h1 className="font-black">{t.teacher_dashboard}</h1>
+         </div>
+         <div className="flex gap-2">
+           <LanguageToggle lang={lang} setLang={setLang} />
+           <button onClick={onLogout}><LogOut size={20} className="text-gray-400" /></button>
+         </div>
+      </div>
+
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8">
+        {loading ? (
+          <div className="flex justify-center items-center h-full"><Loader size={40} className="text-indigo-500 animate-spin" /></div>
+        ) : selectedStudent ? ( 
+          <StudentDetail student={selectedStudent} onBack={() => setSelectedStudent(null)} /> 
+        ) : (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.total_students}</div><div className="text-3xl font-black text-gray-800">{students.length}</div></div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.avg_level}</div><div className="text-3xl font-black text-indigo-600">{(students.reduce((acc, s) => acc + s.level, 0) / (students.length || 1)).toFixed(1)}</div></div>
+            </div>
+            
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-6 border-b border-gray-50 flex justify-between items-center">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><List size={20} /> {t.student_list}</h2>
                 <button onClick={handleExportAllStudents} className="flex items-center gap-2 bg-indigo-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 transition-all text-sm"><Download size={16} /> {t.export_all}</button>
               </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <table className="w-full text-left text-sm text-gray-600">
-                  <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500"><tr><th className="px-6 py-3">{t.col_id_name}</th><th className="px-6 py-3">{t.col_progress}</th><th className="px-6 py-3">{t.col_last_login}</th><th className="px-6 py-3">{t.col_status}</th></tr></thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {students.map((student) => (
-                      <tr key={student.id} onClick={() => setSelectedStudent(student)} className="hover:bg-indigo-50/50 cursor-pointer transition-colors">
-                        <td className="px-6 py-4"><div className="font-bold text-gray-900">{student.name}</div><div className="text-xs text-indigo-400">ID: {student.id}</div></td>
-                        <td className="px-6 py-4"><span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs font-bold">Lv.{student.level}</span></td>
-                        <td className="px-6 py-4 font-mono text-xs">{student.lastLogin}</td>
-                        <td className="px-6 py-4"><div className="flex items-center justify-between"><span className="text-gray-400 text-xs">{t.status_normal}</span><ChevronRight size={16} className="text-gray-300" /></div></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </main>
-      </div>
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500"><tr><th className="px-6 py-4">{t.col_id_name}</th><th className="px-6 py-4 hidden sm:table-cell">{t.col_progress}</th><th className="px-6 py-4 hidden sm:table-cell">{t.col_last_login}</th><th className="px-6 py-4">{t.col_status}</th></tr></thead>
+                <tbody className="divide-y divide-gray-50">
+                  {students.map((student) => (
+                    <tr key={student.id} onClick={() => setSelectedStudent(student)} className="hover:bg-indigo-50/50 cursor-pointer transition-colors">
+                      <td className="px-6 py-4"><div className="font-bold text-gray-900">{student.name}</div><div className="text-xs text-indigo-400">ID: {student.id}</div></td>
+                      <td className="px-6 py-4 hidden sm:table-cell"><span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs font-bold">Lv.{student.level}</span></td>
+                      <td className="px-6 py-4 font-mono text-xs hidden sm:table-cell">{student.lastLogin}</td>
+                      <td className="px-6 py-4"><div className="flex items-center justify-between"><span className="text-gray-400 text-xs">{t.status_normal}</span><ChevronRight size={16} className="text-gray-300" /></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 };
@@ -689,7 +714,7 @@ const StudentMyPage = ({ currentUser, t }) => {
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-24">
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center relative overflow-hidden">
         <div className="w-24 h-24 bg-white p-1 rounded-full shadow-md z-10 mb-3">
           <div className="w-full h-full bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500"><User size={48} /></div>
@@ -727,6 +752,19 @@ const StudentMyPage = ({ currentUser, t }) => {
               </div>
             ) : null;
           })}
+        </div>
+      </div>
+
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><TrendingUp size={20} className="text-green-500" /> {t.learning_record}</h3>
+        <div className="flex items-end justify-between h-32 gap-2">
+          {weeklyStats.map((stat, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+              <div className="text-[10px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">{stat}</div>
+              <div className="w-full bg-indigo-100 rounded-t-lg hover:bg-indigo-300 transition-colors relative" style={{ height: `${Math.max((stat / 100) * 100, 5)}%` }}></div>
+              <div className="text-[10px] text-gray-400 font-bold">{['M','T','W','T','F','S','S'][i]}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -815,14 +853,32 @@ const MatchingGame = ({ vocabList, onGainXP, t, onUpdateProgress }) => {
       </div>
     );
   }
-  if (solved.length === cards.length / 2 && cards.length > 0) {
+  
+  const isCompleted = solved.length === cards.length / 2 && cards.length > 0;
+  if (isCompleted) {
+    const starCount = mistakes === 0 ? 3 : mistakes < 3 ? 2 : 1;
+    const reviewList = vocabList.filter(v => mistakenWords.has(v.id));
     return (
       <div className="flex flex-col items-center h-auto text-center p-6 bg-white rounded-2xl shadow-sm border border-indigo-100 mt-4 animate-in fade-in">
         <h3 className="text-2xl font-bold text-indigo-700 mb-2">{t.congrats}</h3><p className="text-gray-600 mb-6 font-medium">{t.completed_msg}</p>
+        {reviewList.length > 0 && (
+          <div className="w-full mb-6">
+            <h4 className="text-left text-sm font-bold text-gray-500 mb-2 border-b pb-1">{t.review_focus}</h4>
+            <div className="flex flex-col gap-2">
+              {reviewList.map(v => (
+                <div key={v.id} onClick={() => speak(v.word)} className="bg-red-50 p-3 rounded-lg flex justify-between items-center cursor-pointer hover:bg-red-100">
+                  <div className="font-bold text-gray-800">{v.word}</div>
+                  <div className="text-xs text-red-400">{v.meaning} <Volume2 size={12} className="inline"/></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <button onClick={() => { onGainXP(50); setGameStarted(false); }} className="bg-indigo-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">{t.play_again}</button>
       </div>
     );
   }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4 px-2"><div className="flex gap-4 text-xs font-bold text-gray-500"><span className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-100"><Timer size={14} className="text-indigo-500"/> {elapsedTime}s</span><span className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-100"><XCircle size={14} className="text-red-500"/> {mistakes}</span></div><button onClick={() => setGameStarted(false)} className="text-xs text-red-400 font-bold">{t.quit_game}</button></div>
@@ -942,11 +998,12 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
         return (
           <div className="space-y-6">
             <KanjiGradeSelector currentGrade={currentKanjiGrade} onChange={setCurrentKanjiGrade} t={t} />
-            <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100"><div className="flex bg-gray-50 p-1 rounded-xl mb-4"><button onClick={() => setKanjiMode('char')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'char' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><PenTool size={14} /> {t.mode_char}</button><button onClick={() => setKanjiMode('reading')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'reading' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><Volume2 size={14} /> {t.mode_read}</button></div>
+            <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100"><div className="flex bg-gray-50 p-1 rounded-xl mb-4"><button onClick={() => setKanjiMode('char')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'char' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><PenTool size={14} /> {t.mode_char}</button><button onClick={() => setKanjiMode('reading')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'reading' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><Volume2 size={14} /> {t.mode_read}</button><button onClick={() => setKanjiMode('usage')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'usage' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><Book size={14} /> {t.mode_use}</button></div>
               <div className="bg-orange-50/50 p-4 rounded-xl min-h-[400px]">
                 <h2 className="text-lg font-bold text-orange-800 mb-4 px-2">{kanjiData.label}</h2>
                 {kanjiMode === 'char' && <div className="grid grid-cols-2 gap-4">{kanjiData.chars.map((k) => (<div key={k.id} className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-orange-200 flex flex-col items-center"><div className="text-6xl font-black text-gray-800 mb-2 font-serif">{k.char}</div><div className="text-xs font-bold text-orange-400 bg-orange-50 px-2 py-1 rounded-full">{k.strokes} {t.strokes}</div></div>))}</div>}
                 {kanjiMode === 'reading' && <div className="space-y-3">{kanjiData.chars.map((k) => (<div key={k.id} onClick={() => speak(k.on + ', ' + k.kun)} className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"><div className="text-4xl font-black text-gray-800 font-serif w-16 text-center">{k.char}</div><div className="flex-1 pl-4 border-l border-gray-100"><div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-gray-800 text-white px-1.5 rounded">ON</span><span className="font-bold text-gray-800">{k.on}</span></div><div className="flex items-center gap-2"><span className="text-[10px] bg-gray-400 text-white px-1.5 rounded">KUN</span><span className="font-bold text-gray-600">{k.kun}</span></div></div><Volume2 size={16} className="text-orange-300" /></div>))}</div>}
+                {kanjiMode === 'usage' && <div className="space-y-4">{kanjiData.chars.map((k) => (<div key={k.id} className="bg-white rounded-xl shadow-sm border border-orange-100 overflow-hidden"><div className="bg-orange-100 px-4 py-2 flex items-center gap-2"><span className="text-2xl font-black text-orange-800 font-serif">{k.char}</span><span className="text-xs text-orange-600 font-bold">{t.compounds}</span></div><div className="divide-y divide-gray-50">{k.compounds.map((c, i) => (<div key={i} onClick={() => speak(c.w)} className="p-3 flex justify-between items-center hover:bg-orange-50 cursor-pointer"><div><div className="font-bold text-gray-800">{c.w}</div><div className="text-xs text-orange-500">{c.r}</div></div><div className="text-xs text-gray-400">{c.m}</div></div>))}</div></div>))}</div>}
               </div>
             </div>
           </div>
@@ -956,11 +1013,12 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex justify-center items-center p-0 sm:p-4">
-      <div className="w-full max-w-4xl h-full sm:h-[850px] bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative flex flex-col">
+    <div className="flex h-dvh w-full bg-gray-50 justify-center overflow-x-hidden">
+      {/* Responsive Layout Container */}
+      <div className="w-full max-w-md h-full bg-white sm:shadow-2xl sm:rounded-xl relative flex flex-col overflow-hidden">
         <header className="bg-white px-6 py-4 shadow-sm z-10 border-b border-gray-100 flex justify-between items-center"><div><h1 className="text-xl font-black text-indigo-900 flex items-center gap-2"><School className="text-indigo-500" size={24} /> {t.app_name}</h1><div className="flex items-center gap-2 mt-1"><span className="text-xs font-bold text-white bg-indigo-500 px-2 py-0.5 rounded-full">{t.level} {level}</span><div className="w-20 bg-gray-200 rounded-full h-2"><div className="bg-yellow-400 h-2 rounded-full" style={{ width: `${Math.min((xp / (level * 100)) * 100, 100)}%` }}></div></div><span className="text-xs text-gray-400 ml-1">{currentUser.name}</span></div></div><div className="flex items-center gap-2"><LanguageToggle lang={lang} setLang={setLang} /><button onClick={onLogout} className="w-9 h-9 bg-gray-50 rounded-full flex items-center justify-center hover:bg-red-50 text-gray-400 hover:text-red-400 transition-colors"><LogOut size={18} /></button></div></header>
         <main className="flex-1 overflow-y-auto p-4 pb-24 scrollbar-hide">{renderContent()}</main>
-        <nav className="fixed bottom-0 max-w-4xl w-full bg-white/90 backdrop-blur-md border-t border-gray-100 flex justify-around p-2 pb-5 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] z-20 rounded-b-3xl"><TabButton active={activeTab === 'mypage'} onClick={() => setActiveTab('mypage')} icon={User} label={t.tab_mypage} /><TabButton active={activeTab === 'game'} onClick={() => setActiveTab('game')} icon={Gamepad2} label={t.tab_game} /><TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')} icon={RefreshCw} label={t.tab_review} /><TabButton active={activeTab === 'vocab'} onClick={() => setActiveTab('vocab')} icon={BookOpen} label={t.tab_vocab} /><TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={MessageCircle} label={t.tab_chat} /></nav>
+        <nav className="absolute bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-100 flex justify-around p-2 pb-5 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] z-20"><TabButton active={activeTab === 'mypage'} onClick={() => setActiveTab('mypage')} icon={User} label={t.tab_mypage} /><TabButton active={activeTab === 'game'} onClick={() => setActiveTab('game')} icon={Gamepad2} label={t.tab_game} /><TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')} icon={RefreshCw} label={t.tab_review} /><TabButton active={activeTab === 'vocab'} onClick={() => setActiveTab('vocab')} icon={BookOpen} label={t.tab_vocab} /><TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={MessageCircle} label={t.tab_chat} /></nav>
       </div>
     </div>
   );
