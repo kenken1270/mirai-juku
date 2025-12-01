@@ -18,10 +18,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-// データの保存場所を区別するためのID
 const appId = "mirai-juku-live"; 
 
-// --- TRANSLATIONS ---
+// --- CONSTANTS & DATA (Moved to top for safety) ---
 const TRANSLATIONS = {
   zh: {
     app_name: "未来塾 (Mirai Juku)",
@@ -126,7 +125,7 @@ const TRANSLATIONS = {
   ja: {
     app_name: "未来塾 (Mirai Juku)",
     login_title: "ログイン",
-    login_label: "好きなIDを入力 (生徒/教師)",
+    login_label: "生徒 ID / 教師 ID",
     login_button: "はじめる / ログイン",
     login_hint: "ヒント: 'admin' で教師モード。それ以外は生徒モードになります。",
     login_error: "IDを入力してください",
@@ -225,7 +224,6 @@ const TRANSLATIONS = {
   }
 };
 
-// --- DATA ---
 const IRODORI_DATA = {
   1: {
     title: '第1課：はじめまして (初次见面)',
@@ -318,7 +316,7 @@ const KANJI_DATA = {
   }
 };
 
-// --- Helper Functions ---
+// --- HELPER FUNCTIONS ---
 const speak = (text) => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
@@ -376,12 +374,12 @@ const downloadCSV = (filename, content) => {
   document.body.removeChild(link);
 };
 
-// --- COMPONENTS ---
+// --- UI COMPONENTS ---
 
 const LanguageToggle = ({ lang, setLang }) => (
   <button 
     onClick={() => setLang(lang === 'zh' ? 'ja' : 'zh')}
-    className="flex items-center gap-1 bg-white/20 backdrop-blur-sm hover:bg-white/30 text-indigo-900 px-3 py-1 rounded-full text-xs font-bold transition-all border border-indigo-100/50"
+    className="flex items-center gap-1 bg-white/50 backdrop-blur-sm hover:bg-white text-indigo-900 px-3 py-1 rounded-full text-xs font-bold transition-all border border-indigo-200"
   >
     <Globe size={14} />
     {lang === 'zh' ? 'ZH' : 'JP'}
@@ -446,8 +444,15 @@ const LoginScreen = ({ onLogin, lang, setLang }) => {
 
       if (userSnap.exists()) {
         userData = userSnap.data();
+        // Data Repair: Add progressByLesson if missing
+        if (!userData.progressByLesson) {
+            userData.progressByLesson = {
+                total: { mastered: 0, learning: 0, new: getAllItems().length }
+            };
+            await updateDoc(userRef, { progressByLesson: userData.progressByLesson });
+        }
       } else {
-        // Create new user if not exists
+        // Create new user
         const initialData = {
           id: userId,
           name: userId === 'admin' ? 'Teacher' : `Student ${userId}`,
@@ -473,19 +478,19 @@ const LoginScreen = ({ onLogin, lang, setLang }) => {
 
     } catch (err) {
       console.error("Login Error:", err);
-      setError("Login failed. Please check your network or try again.");
+      setError("Login failed. Check network or try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-indigo-50 p-4 relative">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 relative">
       <div className="absolute top-4 right-4">
         <LanguageToggle lang={lang} setLang={setLang} />
       </div>
-      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm text-center">
-        <div className="bg-indigo-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm text-center transform transition-all hover:scale-[1.01]">
+        <div className="bg-indigo-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
           <School size={40} className="text-indigo-600" />
         </div>
         <h1 className="text-2xl font-black text-indigo-900 mb-2">{t.app_name}</h1>
@@ -547,10 +552,8 @@ const TeacherDashboard = ({ currentUser, onLogout, lang, setLang }) => {
       else if (s.xp < 50) status = t.status_worry;
       
       const srs = s.progressByLesson?.total || { mastered: 0, learning: 0, new: 0 };
-      
       return `${s.id},${s.name},Lv.${s.level} (${s.xp}XP),${s.lastLogin},${status},${srs.mastered},${srs.learning},${srs.new}`;
     }).join("\n");
-    
     downloadCSV("mirai_juku_all_students.csv", header + rows);
   };
 
@@ -558,35 +561,9 @@ const TeacherDashboard = ({ currentUser, onLogout, lang, setLang }) => {
     let content = "";
     const srs = student.progressByLesson?.total || { mastered: 0, learning: 0, new: 0 };
     
-    content += "【基本情報 / Basic Info】\n";
-    content += `ID,${student.id}\n`;
-    content += `名前,${student.name}\n`;
-    content += `レベル,${student.level}\n`;
-    content += `総XP,${student.xp}\n`;
-    content += `最終ログイン,${student.lastLogin}\n\n`;
-
-    content += `【${t.retention_stats} (Total) / Memory Retention】\n`;
-    content += `${t.srs_mastered},${srs.mastered}\n`;
-    content += `${t.srs_learning},${srs.learning}\n`;
-    content += `${t.srs_new},${srs.new}\n\n`;
-
-    content += `【${t.weak_points} / Weak Words】\n`;
-    if (student.weakWords && student.weakWords.length > 0) {
-      student.weakWords.forEach(w => {
-        content += `${w}\n`;
-      });
-    } else {
-      content += `${t.no_weakness}\n`;
-    }
-    content += "\n";
-
-    content += `【${t.recent_activity} / Recent Activity】\n`;
-    content += "日付 (Date),活动内容 (Action),分数 (Score)\n";
-    if (student.recentActivity && student.recentActivity.length > 0) {
-      student.recentActivity.forEach(a => {
-        content += `${a.date},${a.action},${a.score}\n`;
-      });
-    }
+    content += "【Basic Info】\n";
+    content += `ID,${student.id}\nName,${student.name}\nLevel,${student.level}\nXP,${student.xp}\nLast Login,${student.lastLogin}\n\n`;
+    content += `【Retention】\nMastered,${srs.mastered}\nLearning,${srs.learning}\nNew,${srs.new}\n\n`;
     
     downloadCSV(`report_${student.id}.csv`, content);
   };
@@ -599,21 +576,11 @@ const TeacherDashboard = ({ currentUser, onLogout, lang, setLang }) => {
       ? student.progressByLesson[viewScope] 
       : { mastered: 0, learning: 0, new: 0 };
 
-    const badgeList = [
-      { id: 'beginner', name: '入门 (Beginner)', icon: Zap, color: 'text-yellow-500 bg-yellow-100' },
-      { id: 'streak3', name: '3天连续 (3 Day Streak)', icon: Flame, color: 'text-orange-500 bg-orange-100' },
-      { id: 'streak7', name: '7天连续 (7 Day Streak)', icon: Flame, color: 'text-red-500 bg-red-100' },
-      { id: 'vocab_master', name: '单词大师 (Vocab Master)', icon: BookOpen, color: 'text-blue-500 bg-blue-100' },
-      { id: 'kanji_master', name: '汉字大师 (Kanji Master)', icon: PenTool, color: 'text-purple-500 bg-purple-100' },
-    ];
-
     return (
       <div className="space-y-6 animate-in slide-in-from-right duration-300">
         <div className="flex justify-between items-center">
           <button onClick={onBack} className="flex items-center gap-2 text-indigo-600 font-bold hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors"><ArrowLeft size={20} /> {t.back_to_list}</button>
-          <button onClick={() => handleExportStudentDetail(student)} className="flex items-center gap-2 bg-green-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-green-700 transition-all text-sm">
-            <Download size={16} /> {t.export_detail}
-          </button>
+          <button onClick={() => handleExportStudentDetail(student)} className="flex items-center gap-2 bg-green-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-green-700 transition-all text-sm"><Download size={16} /> {t.export_detail}</button>
         </div>
         
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-6">
@@ -644,99 +611,65 @@ const TeacherDashboard = ({ currentUser, onLogout, lang, setLang }) => {
            <ProgressBreakdown stats={srsStats} label={viewScope === 'total' ? t.scope_all : `${t.lesson_prefix} ${viewScope} ${t.lesson_suffix}`} t={t} />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><BarChart3 size={20} className="text-green-500" /> {t.learning_stats} (Week)</h3>
-              <div className="flex items-end justify-between h-32 gap-2">
-                {weeklyStats.map((stat, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
-                    <div className="w-full bg-indigo-100 rounded-t-sm hover:bg-indigo-300 transition-colors relative" style={{ height: `${Math.max((stat / 100) * 100, 5)}%` }}></div>
-                    <div className="text-[10px] text-gray-400 font-bold">{['M','T','W','T','F','S','S'][i]}</div>
-                  </div>
-                ))}
-              </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><BarChart3 size={20} className="text-green-500" /> {t.learning_stats} (Week)</h3>
+           <div className="flex items-end justify-between h-32 gap-2">
+             {weeklyStats.map((stat, i) => (
+               <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                 <div className="w-full bg-indigo-100 rounded-t-sm hover:bg-indigo-300 transition-colors relative" style={{ height: `${Math.max((stat / 100) * 100, 5)}%` }}></div>
+                 <div className="text-[10px] text-gray-400 font-bold">{['M','T','W','T','F','S','S'][i]}</div>
+               </div>
+             ))}
            </div>
-
-           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Award size={20} className="text-yellow-500" /> {t.my_badges}</h3>
-              <div className="grid grid-cols-3 gap-3">
-                {badges.length > 0 ? badges.map(badgeId => {
-                  const badge = badgeList.find(b => b.id === badgeId);
-                  if (!badge) return null;
-                  return (
-                    <div key={badgeId} className={`flex flex-col items-center justify-center p-3 rounded-xl ${badge.color} bg-opacity-20 border border-gray-100`}>
-                      <badge.icon size={24} className="mb-1" />
-                      <span className="text-[10px] font-bold text-center leading-tight">{badge.name}</span>
-                    </div>
-                  );
-                }) : (
-                  <div className="col-span-3 text-gray-400 text-sm italic text-center py-4">{t.no_badges}</div>
-                )}
-              </div>
-           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><AlertCircle size={20} className="text-red-500" /> {t.weak_points}</h3>
-            {student.weakWords && student.weakWords.length > 0 ? (
-              <ul className="space-y-2">{student.weakWords.map((word, idx) => (<li key={idx} className="flex justify-between items-center p-3 bg-red-50 rounded-lg text-red-800 font-medium text-sm">{word}<button onClick={() => speak(word)} className="p-1 hover:bg-red-100 rounded-full"><Volume2 size={16} /></button></li>))}</ul>
-            ) : ( <p className="text-gray-400 text-sm">{t.no_weakness}</p> )}
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Clock size={20} className="text-indigo-500" /> {t.recent_activity}</h3>
-            <div className="space-y-4">{student.recentActivity && student.recentActivity.map((activity, idx) => (<div key={idx} className="flex items-center gap-4 text-sm"><div className="w-12 text-gray-400 font-mono text-xs">{activity.date}</div><div className="flex-1 font-bold text-gray-700">{activity.action}</div><div className="text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded">{activity.score}</div></div>))}</div>
-          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 font-sans max-w-4xl mx-auto border-x border-gray-200">
-      <header className="bg-white px-6 py-4 shadow-sm z-10 border-b border-gray-100 flex justify-between items-center">
-         <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2"><School className="text-indigo-500" size={24} /> {t.teacher_dashboard}</h1>
-         <div className="flex items-center gap-3">
-            <LanguageToggle lang={lang} setLang={setLang} />
-            <button onClick={onLogout} className="flex items-center gap-1 text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"><LogOut size={14} /> {t.logout}</button>
-         </div>
-      </header>
-      <main className="flex-1 overflow-y-auto p-6">
-        {loading ? (
-          <div className="flex justify-center items-center h-64"><div className="animate-spin text-indigo-500"><Loader size={40} /></div></div>
-        ) : selectedStudent ? ( 
-          <StudentDetail student={selectedStudent} onBack={() => setSelectedStudent(null)} /> 
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.total_students}</div><div className="text-3xl font-black text-gray-800">{students.length} <span className="text-sm font-normal text-gray-400"></span></div></div>
-               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.avg_level}</div><div className="text-3xl font-black text-indigo-600">{(students.reduce((acc, s) => acc + s.level, 0) / (students.length || 1)).toFixed(1)}</div></div>
-               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.attention_needed}</div><div className="text-3xl font-black text-red-500 flex items-center gap-2">0 <AlertCircle size={24} /></div></div>
-            </div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><List size={20} /> {t.student_list} <span className="text-xs font-normal text-gray-400 ml-2">{t.click_detail}</span></h2>
-              <button onClick={handleExportAllStudents} className="flex items-center gap-2 bg-indigo-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 transition-all text-sm">
-                <Download size={16} /> {t.export_all}
-              </button>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <table className="w-full text-left text-sm text-gray-600">
-                <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500"><tr><th className="px-6 py-3">{t.col_id_name}</th><th className="px-6 py-3">{t.col_progress}</th><th className="px-6 py-3">{t.col_last_login}</th><th className="px-6 py-3">{t.col_status}</th></tr></thead>
-                <tbody className="divide-y divide-gray-100">
-                  {students.map((student) => (
-                    <tr key={student.id} onClick={() => setSelectedStudent(student)} className="hover:bg-indigo-50/50 cursor-pointer transition-colors">
-                      <td className="px-6 py-4"><div className="font-bold text-gray-900">{student.name}</div><div className="text-xs text-indigo-400">ID: {student.id}</div></td>
-                      <td className="px-6 py-4"><div className="flex items-center gap-2"><span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs font-bold">Lv.{student.level}</span><span className="text-gray-400 text-xs">{student.xp} XP</span></div></td>
-                      <td className="px-6 py-4 font-mono text-xs">{student.lastLogin}</td>
-                      <td className="px-6 py-4"><div className="flex items-center justify-between">{student.xp > 300 ? (<span className="flex items-center gap-1 text-green-600 text-xs font-bold"><CheckCircle size={14} /> {t.status_good}</span>) : student.xp < 50 ? (<span className="flex items-center gap-1 text-red-500 text-xs font-bold"><AlertCircle size={14} /> {t.status_worry}</span>) : (<span className="text-gray-400 text-xs">{t.status_normal}</span>)}<ChevronRight size={16} className="text-gray-300" /></div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </main>
+    <div className="min-h-screen bg-gray-100 flex justify-center items-center p-0 sm:p-4">
+      <div className="w-full max-w-4xl h-full sm:h-[850px] bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative flex flex-col">
+        <header className="bg-white px-6 py-4 shadow-sm z-10 border-b border-gray-100 flex justify-between items-center">
+          <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2"><School className="text-indigo-500" size={24} /> {t.teacher_dashboard}</h1>
+          <div className="flex items-center gap-3">
+              <LanguageToggle lang={lang} setLang={setLang} />
+              <button onClick={onLogout} className="flex items-center gap-1 text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"><LogOut size={14} /> {t.logout}</button>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex justify-center items-center h-full"><Loader size={40} className="text-indigo-500 animate-spin" /></div>
+          ) : selectedStudent ? ( 
+            <StudentDetail student={selectedStudent} onBack={() => setSelectedStudent(null)} /> 
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.total_students}</div><div className="text-3xl font-black text-gray-800">{students.length}</div></div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"><div className="text-gray-400 text-xs font-bold mb-1">{t.avg_level}</div><div className="text-3xl font-black text-indigo-600">{(students.reduce((acc, s) => acc + s.level, 0) / (students.length || 1)).toFixed(1)}</div></div>
+              </div>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><List size={20} /> {t.student_list}</h2>
+                <button onClick={handleExportAllStudents} className="flex items-center gap-2 bg-indigo-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 transition-all text-sm"><Download size={16} /> {t.export_all}</button>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <table className="w-full text-left text-sm text-gray-600">
+                  <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500"><tr><th className="px-6 py-3">{t.col_id_name}</th><th className="px-6 py-3">{t.col_progress}</th><th className="px-6 py-3">{t.col_last_login}</th><th className="px-6 py-3">{t.col_status}</th></tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {students.map((student) => (
+                      <tr key={student.id} onClick={() => setSelectedStudent(student)} className="hover:bg-indigo-50/50 cursor-pointer transition-colors">
+                        <td className="px-6 py-4"><div className="font-bold text-gray-900">{student.name}</div><div className="text-xs text-indigo-400">ID: {student.id}</div></td>
+                        <td className="px-6 py-4"><span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs font-bold">Lv.{student.level}</span></td>
+                        <td className="px-6 py-4 font-mono text-xs">{student.lastLogin}</td>
+                        <td className="px-6 py-4"><div className="flex items-center justify-between"><span className="text-gray-400 text-xs">{t.status_normal}</span><ChevronRight size={16} className="text-gray-300" /></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 };
@@ -753,29 +686,19 @@ const StudentMyPage = ({ currentUser, t }) => {
   const badgeList = [
     { id: 'beginner', name: '入门 (Beginner)', icon: Zap, color: 'text-yellow-500 bg-yellow-100' },
     { id: 'streak3', name: '3天连续 (3 Day Streak)', icon: Flame, color: 'text-orange-500 bg-orange-100' },
-    { id: 'streak7', name: '7天连续 (7 Day Streak)', icon: Flame, color: 'text-red-500 bg-red-100' },
-    { id: 'vocab_master', name: '单词大师 (Vocab Master)', icon: BookOpen, color: 'text-blue-500 bg-blue-100' },
-    { id: 'kanji_master', name: '汉字大师 (Kanji Master)', icon: PenTool, color: 'text-purple-500 bg-purple-100' },
   ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-10"></div>
         <div className="w-24 h-24 bg-white p-1 rounded-full shadow-md z-10 mb-3">
           <div className="w-full h-full bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500"><User size={48} /></div>
         </div>
         <h2 className="text-2xl font-black text-gray-800 z-10">{currentUser.name}</h2>
         <p className="text-sm text-gray-400 font-bold z-10 mb-4">ID: {currentUser.id}</p>
         <div className="w-full max-w-xs z-10">
-          <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
-            <span>{t.level} {currentUser.level}</span>
-            <span>{t.next_xp}: {(currentUser.level + 1) * 100} XP</span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden border border-gray-100">
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-400 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.min((currentUser.xp / (currentUser.level * 100)) * 100, 100)}%` }}></div>
-          </div>
-          <div className="text-center mt-2 text-indigo-600 font-black text-sm">{t.total_xp}: {currentUser.xp}</div>
+          <div className="flex justify-between text-xs font-bold text-gray-500 mb-1"><span>{t.level} {currentUser.level}</span></div>
+          <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden border border-gray-100"><div className="bg-gradient-to-r from-yellow-400 to-orange-400 h-full rounded-full" style={{ width: `${Math.min((currentUser.xp / (currentUser.level * 100)) * 100, 100)}%` }}></div></div>
         </div>
       </div>
 
@@ -786,9 +709,7 @@ const StudentMyPage = ({ currentUser, t }) => {
               <span className="text-xs font-bold text-gray-400">{t.view_scope}:</span>
               <select value={viewScope} onChange={(e) => setViewScope(e.target.value)} className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-1.5 font-bold">
                 <option value="total">{t.scope_all}</option>
-                {Object.keys(IRODORI_DATA).map(key => (
-                  <option key={key} value={key}>{t.lesson_prefix} {key} {t.lesson_suffix}</option>
-                ))}
+                {Object.keys(IRODORI_DATA).map(key => (<option key={key} value={key}>{t.lesson_prefix} {key} {t.lesson_suffix}</option>))}
               </select>
            </div>
          </div>
@@ -798,31 +719,14 @@ const StudentMyPage = ({ currentUser, t }) => {
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Award size={20} className="text-yellow-500" /> {t.my_badges}</h3>
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {badges.length > 0 ? badges.map(badgeId => {
+          {badges.map(badgeId => {
             const badge = badgeList.find(b => b.id === badgeId);
-            if (!badge) return null;
-            return (
+            return badge ? (
               <div key={badgeId} className={`flex-shrink-0 flex flex-col items-center justify-center w-24 h-24 rounded-xl ${badge.color} bg-opacity-20 border-2 border-white shadow-sm`}>
-                <badge.icon size={28} className="mb-1" />
-                <span className="text-[10px] font-bold text-center leading-tight px-1">{badge.name}</span>
+                <badge.icon size={28} className="mb-1" /><span className="text-[10px] font-bold text-center leading-tight px-1">{badge.name}</span>
               </div>
-            );
-          }) : (
-            <div className="text-gray-400 text-sm italic w-full text-center py-4">{t.no_badges}</div>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><TrendingUp size={20} className="text-green-500" /> {t.learning_record}</h3>
-        <div className="flex items-end justify-between h-32 gap-2">
-          {weeklyStats.map((stat, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
-              <div className="text-[10px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">{stat}</div>
-              <div className="w-full bg-indigo-100 rounded-t-lg hover:bg-indigo-300 transition-colors relative" style={{ height: `${Math.max((stat / 100) * 100, 5)}%` }}></div>
-              <div className="text-[10px] text-gray-400 font-bold">{['M','T','W','T','F','S','S'][i]}</div>
-            </div>
-          ))}
+            ) : null;
+          })}
         </div>
       </div>
     </div>
@@ -838,39 +742,125 @@ const TabButton = ({ active, icon: Icon, label, onClick }) => (
 
 const LessonSelector = ({ currentLesson, onChange, t }) => (
   <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-4 flex items-center justify-between">
-    <div className="flex items-center gap-2">
-      <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BookOpen size={18} /></div>
-      <div>
-        <span className="text-xs text-gray-500 font-bold block">{t.textbook}</span>
-        <span className="text-sm font-bold text-indigo-900">{t.select_lesson}</span>
-      </div>
-    </div>
+    <div className="flex items-center gap-2"><div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BookOpen size={18} /></div><div><span className="text-xs text-gray-500 font-bold block">{t.textbook}</span><span className="text-sm font-bold text-indigo-900">{t.select_lesson}</span></div></div>
     <select value={currentLesson} onChange={(e) => onChange(Number(e.target.value))} className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 font-bold">
-      {Object.keys(IRODORI_DATA).map(key => (
-        <option key={key} value={key}>{t.lesson_prefix} {key} {t.lesson_suffix}</option>
-      ))}
+      {Object.keys(IRODORI_DATA).map(key => (<option key={key} value={key}>{t.lesson_prefix} {key} {t.lesson_suffix}</option>))}
     </select>
   </div>
 );
 
 const KanjiGradeSelector = ({ currentGrade, onChange, t }) => (
   <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-4 flex items-center justify-between">
-    <div className="flex items-center gap-2">
-      <div className="bg-orange-100 p-2 rounded-lg text-orange-600"><GraduationCap size={18} /></div>
-      <div>
-        <span className="text-xs text-gray-500 font-bold block">{t.mext_std}</span>
-        <span className="text-sm font-bold text-orange-900">{t.select_grade}</span>
-      </div>
-    </div>
+    <div className="flex items-center gap-2"><div className="bg-orange-100 p-2 rounded-lg text-orange-600"><GraduationCap size={18} /></div><div><span className="text-xs text-gray-500 font-bold block">{t.mext_std}</span><span className="text-sm font-bold text-orange-900">{t.select_grade}</span></div></div>
     <select value={currentGrade} onChange={(e) => onChange(e.target.value)} className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block p-2.5 font-bold w-36">
-      {Object.keys(KANJI_DATA).map(key => (
-        <option key={key} value={key}>{KANJI_DATA[key].label}</option>
-      ))}
+      {Object.keys(KANJI_DATA).map(key => (<option key={key} value={key}>{KANJI_DATA[key].label}</option>))}
     </select>
   </div>
 );
 
-// --- Student App Shell ---
+const MatchingGame = ({ vocabList, onGainXP, t, onUpdateProgress }) => {
+  const [cards, setCards] = useState([]);
+  const [flipped, setFlipped] = useState([]);
+  const [solved, setSolved] = useState([]);
+  const [disabled, setDisabled] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [mistakes, setMistakes] = useState(0);
+  const [startTime, setStartTime] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [mistakenWords, setMistakenWords] = useState(new Set());
+
+  useEffect(() => {
+    let interval;
+    if (gameStarted && solved.length < cards.length / 2) {
+      interval = setInterval(() => setElapsedTime(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [gameStarted, solved]);
+
+  const initializeGame = () => {
+    if (!vocabList) return;
+    const selectedVocab = [...vocabList].sort(() => 0.5 - Math.random()).slice(0, 6);
+    const gameCards = [];
+    selectedVocab.forEach(v => {
+      gameCards.push({ id: v.id, content: v.word, type: 'jp', matchId: v.id });
+      gameCards.push({ id: v.id + '_cn', content: v.meaning, type: 'cn', matchId: v.id });
+    });
+    setCards(shuffleArray(gameCards));
+    setFlipped([]); setSolved([]); setMistakes(0); setMistakenWords(new Set()); setStartTime(Date.now()); setElapsedTime(0); setGameStarted(true);
+  };
+
+  const handleCardClick = (index) => {
+    if (disabled || flipped.includes(index) || solved.includes(cards[index].matchId)) return;
+    if (cards[index].type === 'jp') speak(cards[index].content);
+    const newFlipped = [...flipped, index];
+    setFlipped(newFlipped);
+    if (newFlipped.length === 2) {
+      setDisabled(true);
+      const [f, s] = newFlipped;
+      if (cards[f].matchId === cards[s].matchId) {
+        setSolved([...solved, cards[f].matchId]); setFlipped([]); setDisabled(false); onGainXP(10); onUpdateProgress(cards[f].matchId, 'mastered');
+        const jpCard = cards[f].type === 'jp' ? cards[f] : cards[s]; speak(jpCard.content);
+      } else {
+        setMistakes(prev => prev + 1); setMistakenWords(prev => new Set(prev).add(cards[f].matchId).add(cards[s].matchId));
+        setTimeout(() => { setFlipped([]); setDisabled(false); }, 1000);
+      }
+    }
+  };
+
+  if (!gameStarted) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center p-6 bg-white rounded-2xl shadow-sm border border-indigo-100 mt-4">
+        <Gamepad2 size={64} className="text-indigo-400 mb-4" /><h3 className="text-xl font-bold text-gray-800 mb-2">{t.card_match}</h3><p className="text-gray-500 mb-6 whitespace-pre-wrap">{t.card_match_desc}</p>
+        <button onClick={initializeGame} className="bg-indigo-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"><PlayCircle size={20} /> {t.start_game}</button>
+      </div>
+    );
+  }
+  if (solved.length === cards.length / 2 && cards.length > 0) {
+    return (
+      <div className="flex flex-col items-center h-auto text-center p-6 bg-white rounded-2xl shadow-sm border border-indigo-100 mt-4 animate-in fade-in">
+        <h3 className="text-2xl font-bold text-indigo-700 mb-2">{t.congrats}</h3><p className="text-gray-600 mb-6 font-medium">{t.completed_msg}</p>
+        <button onClick={() => { onGainXP(50); setGameStarted(false); }} className="bg-indigo-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">{t.play_again}</button>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4 px-2"><div className="flex gap-4 text-xs font-bold text-gray-500"><span className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-100"><Timer size={14} className="text-indigo-500"/> {elapsedTime}s</span><span className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-100"><XCircle size={14} className="text-red-500"/> {mistakes}</span></div><button onClick={() => setGameStarted(false)} className="text-xs text-red-400 font-bold">{t.quit_game}</button></div>
+      <div className="grid grid-cols-3 gap-3">
+        {cards.map((card, index) => (
+          <div key={index} onClick={() => handleCardClick(index)} className={`aspect-square rounded-xl flex items-center justify-center p-2 text-center text-sm font-bold cursor-pointer transition-all duration-300 transform ${flipped.includes(index) || solved.includes(card.matchId) ? 'bg-white border-2 border-indigo-200 text-indigo-900 rotate-0' : 'bg-indigo-500 text-white rotate-y-180 hover:bg-indigo-600'} ${solved.includes(card.matchId) ? 'opacity-50 scale-95 border-green-400 bg-green-50' : 'shadow-md'}`}>
+            {(flipped.includes(index) || solved.includes(card.matchId)) ? <span className="animate-in fade-in">{card.content}</span> : <Smile size={24} className="opacity-50" />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const MixedFlashcard = ({ items, onResult, onComplete, t }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+  useEffect(() => { setCurrentIndex(0); setIsFlipped(false); }, [items]);
+  if (!items || items.length === 0) return <div className="text-center p-8 text-gray-500"><p>{t.no_items}</p></div>;
+  if (currentIndex >= items.length) return <div className="flex flex-col items-center justify-center h-64 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 text-center shadow-lg border border-indigo-100"><h3 className="text-2xl font-black text-indigo-900 mb-2">{t.done_title}</h3><button onClick={onComplete} className="px-8 py-3 bg-indigo-600 text-white rounded-full font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">{t.back_home}</button></div>;
+  const item = items[currentIndex];
+  const handleNext = (difficulty) => { onResult(item.id, difficulty); setIsFlipped(false); setCurrentIndex(prev => prev + 1); };
+  const playAudio = (e) => { e.stopPropagation(); const text = item.type === 'kanji' ? item.example : (item.reading || item.text || item.word); speak(text); };
+
+  return (
+    <div className="flex flex-col items-center w-full perspective-1000">
+      <div className="w-full h-80 bg-white rounded-3xl shadow-xl flex flex-col items-center justify-center cursor-pointer transform transition-all hover:scale-[1.01] border border-gray-100 relative overflow-hidden" onClick={() => setIsFlipped(!isFlipped)}>
+        <div className="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-600">{item.type === 'kanji' ? t.tab_kanji : t.tab_vocab}</div>
+        <button onClick={playAudio} className="absolute top-4 right-4 p-3 bg-gray-50 rounded-full text-indigo-500 hover:bg-indigo-100 transition-colors z-10 shadow-sm"><Volume2 size={24} /></button>
+        <div className="text-center p-6 w-full flex-1 flex flex-col justify-center items-center">
+          {!isFlipped ? <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300"><span className="text-gray-400 text-xs font-bold mb-6 tracking-widest">{t.flip}</span><div className="text-4xl font-black text-gray-800">{item.word || item.char || item.text}</div></div> : <div className="flex flex-col items-center animate-in slide-in-from-bottom-4 duration-300"><h2 className="text-2xl font-bold text-indigo-600 mb-2">{item.reading || item.on}</h2><p className="text-xl text-gray-700 font-medium">{item.meaning || item.cn || item.trans}</p></div>}
+        </div>
+      </div>
+      {isFlipped && <div className="flex gap-3 mt-6 w-full px-2 animate-in fade-in slide-in-from-bottom-2 duration-300"><button onClick={() => handleNext('good')} className="flex-1 bg-indigo-50 text-indigo-600 py-4 rounded-2xl font-bold border-b-4 border-indigo-100 hover:border-indigo-200 hover:bg-indigo-100 active:border-b-0 active:translate-y-1 transition-all">{t.good}</button></div>}
+    </div>
+  );
+};
+
 const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) => {
   const [activeTab, setActiveTab] = useState('mypage'); 
   const [currentLesson, setCurrentLesson] = useState(9);
@@ -892,27 +882,12 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
   }, [xp, level]);
 
   const addXp = (amount) => setXp(prev => prev + amount);
-
-  const startReview = () => {
-    const queue = getDailyReviewItems(reviewFilter);
-    setReviewQueue(queue);
-    setIsReviewStarted(true);
-  };
-
-  const handleSRSResult = (id, difficulty) => {
-    console.log(`SRS Update: Item ${id} marked as ${difficulty}`);
-    addXp(5);
-  };
-
+  const startReview = () => { const queue = getDailyReviewItems(reviewFilter); setReviewQueue(queue); setIsReviewStarted(true); };
+  const handleSRSResult = (id, difficulty) => { addXp(5); };
   const updateProgressStats = (wordId, status) => {
     const currentProgress = currentUser.progressByLesson?.total || { mastered: 0, learning: 0, new: 0 };
     const newProgress = { ...currentProgress, mastered: currentProgress.mastered + 1 };
-    updateUserData({
-      progressByLesson: {
-        ...currentUser.progressByLesson,
-        total: newProgress
-      }
-    });
+    updateUserData({ progressByLesson: { ...currentUser.progressByLesson, total: newProgress } });
   };
 
   const getLessonData = () => IRODORI_DATA[currentLesson] || IRODORI_DATA[1];
@@ -928,10 +903,7 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
         return (
           <div className="space-y-4">
             <LessonSelector currentLesson={currentLesson} onChange={setCurrentLesson} t={t} />
-            <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center">
-               <div><h2 className="font-bold text-lg flex items-center gap-2"><Gamepad2 size={20}/> {t.game_header}</h2><p className="text-xs opacity-80">{t.play_learn}</p></div>
-               <div className="text-right"><div className="text-2xl font-black">{xp} XP</div><div className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded">{t.level} {level}</div></div>
-            </div>
+            <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center"><div><h2 className="font-bold text-lg flex items-center gap-2"><Gamepad2 size={20}/> {t.game_header}</h2><p className="text-xs opacity-80">{t.play_learn}</p></div><div className="text-right"><div className="text-2xl font-black">{xp} XP</div><div className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded">{t.level} {level}</div></div></div>
             <MatchingGame vocabList={lessonData.vocab} onGainXP={addXp} t={t} onUpdateProgress={updateProgressStats} />
           </div>
         );
@@ -939,26 +911,9 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
         return (
           <div className="space-y-6 pt-2">
             {!isReviewStarted ? (
-              <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-8">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-indigo-200 rounded-full blur-xl opacity-50 animate-pulse"></div>
-                  <div className="relative bg-white p-6 rounded-full shadow-lg"><RefreshCw size={64} className="text-indigo-600" /></div>
-                </div>
-                <div className="text-center space-y-2"><h2 className="text-3xl font-black text-gray-800">{t.daily_review}</h2><p className="text-indigo-600 font-bold text-lg">Daily Review</p><p className="text-gray-400 text-sm max-w-xs mx-auto whitespace-pre-wrap">{t.review_desc}</p></div>
-                <div className="w-full px-6">
-                  <div className="bg-gray-100 p-1.5 rounded-xl flex gap-1">
-                    {[ { id: 'all', label: t.filter_all, icon: RefreshCw }, { id: 'vocab', label: t.filter_vocab, icon: BookOpen }, { id: 'kanji', label: t.filter_kanji, icon: Brain }, { id: 'chat', label: t.filter_chat, icon: MessageCircle } ].map(type => (
-                      <button key={type.id} onClick={() => setReviewFilter(type.id)} className={`flex-1 py-3 rounded-lg flex flex-col items-center justify-center gap-1 transition-all ${reviewFilter === type.id ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-gray-400 hover:text-gray-600'}`}><type.icon size={18} /> <span className="text-[10px] font-bold">{type.label}</span></button>
-                    ))}
-                  </div>
-                </div>
-                <button onClick={startReview} className="w-full max-w-xs bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"><PlayCircle size={24} /> {reviewFilter === 'all' ? t.start_all : t.start}</button>
-              </div>
+              <div className="flex flex-col items-center justify-center h-64 space-y-8"><div className="text-center space-y-2"><h2 className="text-3xl font-black text-gray-800">{t.daily_review}</h2><p className="text-gray-400 text-sm max-w-xs mx-auto whitespace-pre-wrap">{t.review_desc}</p></div><button onClick={startReview} className="w-full max-w-xs bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"><PlayCircle size={24} /> {t.start}</button></div>
             ) : (
-              <div>
-                <div className="flex items-center justify-between mb-6 px-2"><h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">{reviewFilter === 'all' && <RefreshCw size={20} className="text-indigo-500" />} {t.review_session}</h2><button onClick={() => setIsReviewStarted(false)} className="text-xs text-gray-400 font-bold hover:text-gray-600">{t.quit_game}</button></div>
-                <MixedFlashcard items={reviewQueue} onResult={handleSRSResult} onComplete={() => setIsReviewStarted(false)} t={t} />
-              </div>
+              <div><div className="flex items-center justify-between mb-6 px-2"><h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">{t.review_session}</h2><button onClick={() => setIsReviewStarted(false)} className="text-xs text-gray-400 font-bold hover:text-gray-600">{t.quit_game}</button></div><MixedFlashcard items={reviewQueue} onResult={handleSRSResult} onComplete={() => setIsReviewStarted(false)} t={t} /></div>
             )}
           </div>
         );
@@ -966,48 +921,19 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
         return (
           <div className="space-y-4">
             <LessonSelector currentLesson={currentLesson} onChange={setCurrentLesson} t={t} />
-            <div className="bg-gray-100 p-1 rounded-lg flex mb-4">
-              <button onClick={() => setVocabMode('list')} className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-all ${vocabMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}><List size={16} /> {t.list_mode}</button>
-              <button onClick={() => setVocabMode('flashcard')} className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-all ${vocabMode === 'flashcard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}><RefreshCw size={16} /> {t.card_mode}</button>
-            </div>
-            {vocabMode === 'list' ? (
-              <div className="grid gap-3">
-                {lessonData.vocab.map((v) => (
-                  <div key={v.id} onClick={() => speak(v.word)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform">
-                    <div><div className="text-xl font-black text-gray-800">{v.word}</div><div className="text-sm text-indigo-600 font-bold">{v.reading}</div></div>
-                    <div className="text-right"><div className="text-sm text-gray-500 font-medium">{v.meaning}</div><Volume2 size={14} className="text-indigo-300 ml-auto mt-1" /></div>
-                  </div>
-                ))}
-              </div>
-            ) : ( <MixedFlashcard items={lessonData.vocab} onResult={handleSRSResult} onComplete={() => setVocabMode('list')} t={t} /> )}
+            <div className="bg-gray-100 p-1 rounded-lg flex mb-4"><button onClick={() => setVocabMode('list')} className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-all ${vocabMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}><List size={16} /> {t.list_mode}</button><button onClick={() => setVocabMode('flashcard')} className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-all ${vocabMode === 'flashcard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}><RefreshCw size={16} /> {t.card_mode}</button></div>
+            {vocabMode === 'list' ? <div className="grid gap-3">{lessonData.vocab.map((v) => (<div key={v.id} onClick={() => speak(v.word)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform"><div><div className="text-xl font-black text-gray-800">{v.word}</div><div className="text-sm text-indigo-600 font-bold">{v.reading}</div></div><div className="text-right"><div className="text-sm text-gray-500 font-medium">{v.meaning}</div><Volume2 size={14} className="text-indigo-300 ml-auto mt-1" /></div></div>))}</div> : <MixedFlashcard items={lessonData.vocab} onResult={handleSRSResult} onComplete={() => setVocabMode('list')} t={t} />}
           </div>
         );
       case 'chat':
         return (
           <div className="space-y-4">
             <LessonSelector currentLesson={currentLesson} onChange={setCurrentLesson} t={t} />
-            <div className="flex bg-gray-100 p-1 rounded-lg mb-2">
-              <button onClick={() => setChatDisplayMode('both')} className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${chatDisplayMode === 'both' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}><Eye size={14} className="inline mr-1" /> {t.mode_both}</button>
-              <button onClick={() => setChatDisplayMode('jp')} className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${chatDisplayMode === 'jp' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>{t.mode_jp}</button>
-              <button onClick={() => setChatDisplayMode('cn')} className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${chatDisplayMode === 'cn' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>{t.mode_cn}</button>
-            </div>
+            <div className="flex bg-gray-100 p-1 rounded-lg mb-2"><button onClick={() => setChatDisplayMode('both')} className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${chatDisplayMode === 'both' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}><Eye size={14} className="inline mr-1" /> {t.mode_both}</button><button onClick={() => setChatDisplayMode('jp')} className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${chatDisplayMode === 'jp' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>{t.mode_jp}</button><button onClick={() => setChatDisplayMode('cn')} className={`flex-1 py-2 rounded-md text-xs font-bold transition-all ${chatDisplayMode === 'cn' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>{t.mode_cn}</button></div>
             {lessonData.conversations.map((convo, idx) => (
               <div key={idx} className="bg-white rounded-xl shadow-sm overflow-hidden mb-4 border border-gray-100">
                 <div className="bg-gray-50 p-3 border-b border-gray-100 flex justify-between items-center"><h3 className="font-bold text-gray-700">{convo.title}</h3><span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-1 rounded">{t.role_play}</span></div>
-                <div className="p-4 space-y-4">
-                  {convo.lines.map((line, i) => (
-                    <div key={i} className={`flex ${line.speaker === 'A' ? 'justify-start' : 'justify-end'}`} onClick={() => speak(line.text)}>
-                      <div className={`flex flex-col ${line.speaker === 'A' ? 'items-start' : 'items-end'} max-w-[85%]`}>
-                        <span className="text-xs text-gray-400 mb-1 ml-1">{line.speaker}</span>
-                        <div className={`rounded-2xl p-3 cursor-pointer hover:opacity-90 transition-opacity relative group text-left ${line.speaker === 'A' ? 'bg-gray-100 rounded-tl-none text-gray-800' : 'bg-indigo-500 text-white rounded-tr-none'}`}>
-                          {chatDisplayMode !== 'cn' && <p className="text-sm font-bold leading-relaxed">{line.text}</p>}
-                          {chatDisplayMode !== 'jp' && <p className={`text-xs ${chatDisplayMode === 'cn' ? 'text-base font-bold' : 'mt-2 pt-2 border-t'} ${line.speaker === 'A' ? 'text-gray-500 border-gray-200' : 'text-indigo-200 border-indigo-400'}`}>{line.trans}</p>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-gray-50 p-2 flex justify-center"><button className="flex items-center gap-2 text-xs font-bold text-indigo-500 bg-white border border-indigo-100 px-4 py-2 rounded-full shadow-sm active:scale-95 transition-transform"><PlayCircle size={14} /> {t.play_all}</button></div>
+                <div className="p-4 space-y-4">{convo.lines.map((line, i) => (<div key={i} className={`flex ${line.speaker === 'A' ? 'justify-start' : 'justify-end'}`} onClick={() => speak(line.text)}><div className={`flex flex-col ${line.speaker === 'A' ? 'items-start' : 'items-end'} max-w-[85%]`}>{chatDisplayMode !== 'cn' && <p className="text-sm font-bold leading-relaxed">{line.text}</p>}{chatDisplayMode !== 'jp' && <p className={`text-xs ${chatDisplayMode === 'cn' ? 'text-base font-bold' : 'mt-2 pt-2 border-t'} ${line.speaker === 'A' ? 'text-gray-500 border-gray-200' : 'text-indigo-200 border-indigo-400'}`}>{line.trans}</p>}</div></div>))}</div>
               </div>
             ))}
           </div>
@@ -1016,62 +942,11 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
         return (
           <div className="space-y-6">
             <KanjiGradeSelector currentGrade={currentKanjiGrade} onChange={setCurrentKanjiGrade} t={t} />
-            <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-              <div className="flex bg-gray-50 p-1 rounded-xl mb-4">
-                <button onClick={() => setKanjiMode('char')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'char' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><PenTool size={14} /> {t.mode_char}</button>
-                <button onClick={() => setKanjiMode('reading')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'reading' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><Volume2 size={14} /> {t.mode_read}</button>
-                <button onClick={() => setKanjiMode('usage')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'usage' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><Book size={14} /> {t.mode_use}</button>
-              </div>
+            <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100"><div className="flex bg-gray-50 p-1 rounded-xl mb-4"><button onClick={() => setKanjiMode('char')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'char' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><PenTool size={14} /> {t.mode_char}</button><button onClick={() => setKanjiMode('reading')} className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${kanjiMode === 'reading' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}><Volume2 size={14} /> {t.mode_read}</button></div>
               <div className="bg-orange-50/50 p-4 rounded-xl min-h-[400px]">
                 <h2 className="text-lg font-bold text-orange-800 mb-4 px-2">{kanjiData.label}</h2>
-                {kanjiMode === 'char' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    {kanjiData.chars.map((k) => (
-                      <div key={k.id} className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-orange-200 flex flex-col items-center">
-                        <div className="text-6xl font-black text-gray-800 mb-2 font-serif">{k.char}</div>
-                        <div className="text-xs font-bold text-orange-400 bg-orange-50 px-2 py-1 rounded-full">{k.strokes} {t.strokes}</div>
-                        <div className="mt-2 text-xs text-gray-400">{t.meaning}: {k.cn}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {kanjiMode === 'reading' && (
-                  <div className="space-y-3">
-                    {kanjiData.chars.map((k) => (
-                      <div key={k.id} onClick={() => speak(k.on + ', ' + k.kun)} className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform">
-                        <div className="text-4xl font-black text-gray-800 font-serif w-16 text-center">{k.char}</div>
-                        <div className="flex-1 pl-4 border-l border-gray-100">
-                          <div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-gray-800 text-white px-1.5 rounded">ON</span><span className="font-bold text-gray-800">{k.on}</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] bg-gray-400 text-white px-1.5 rounded">KUN</span><span className="font-bold text-gray-600">{k.kun}</span></div>
-                        </div>
-                        <Volume2 size={16} className="text-orange-300" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {kanjiMode === 'usage' && (
-                  <div className="space-y-4">
-                    {kanjiData.chars.map((k) => (
-                      <div key={k.id} className="bg-white rounded-xl shadow-sm border border-orange-100 overflow-hidden">
-                         <div className="bg-orange-100 px-4 py-2 flex items-center gap-2"><span className="text-2xl font-black text-orange-800 font-serif">{k.char}</span><span className="text-xs text-orange-600 font-bold">{t.compounds}</span></div>
-                         <div className="divide-y divide-gray-50">
-                           {k.compounds && k.compounds.length > 0 ? (
-                             k.compounds.map((c, i) => (
-                               <div key={i} onClick={() => speak(c.w)} className="p-3 flex justify-between items-center hover:bg-orange-50 cursor-pointer">
-                                 <div><div className="font-bold text-gray-800">{c.w}</div><div className="text-xs text-orange-500">{c.r}</div></div>
-                                 <div className="text-xs text-gray-400">{c.m}</div>
-                               </div>
-                             ))
-                           ) : (
-                             <div onClick={() => speak(k.example)} className="p-3 flex justify-between items-center hover:bg-orange-50 cursor-pointer">
-                               <div><div className="font-bold text-gray-800">{k.example.split(' ')[0]}</div><div className="text-xs text-orange-500">{k.example.split(' ')[1]}</div></div><div className="text-xs text-gray-400">{t.example}</div>
-                             </div>
-                           )}
-                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {kanjiMode === 'char' && <div className="grid grid-cols-2 gap-4">{kanjiData.chars.map((k) => (<div key={k.id} className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-orange-200 flex flex-col items-center"><div className="text-6xl font-black text-gray-800 mb-2 font-serif">{k.char}</div><div className="text-xs font-bold text-orange-400 bg-orange-50 px-2 py-1 rounded-full">{k.strokes} {t.strokes}</div></div>))}</div>}
+                {kanjiMode === 'reading' && <div className="space-y-3">{kanjiData.chars.map((k) => (<div key={k.id} onClick={() => speak(k.on + ', ' + k.kun)} className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"><div className="text-4xl font-black text-gray-800 font-serif w-16 text-center">{k.char}</div><div className="flex-1 pl-4 border-l border-gray-100"><div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-gray-800 text-white px-1.5 rounded">ON</span><span className="font-bold text-gray-800">{k.on}</span></div><div className="flex items-center gap-2"><span className="text-[10px] bg-gray-400 text-white px-1.5 rounded">KUN</span><span className="font-bold text-gray-600">{k.kun}</span></div></div><Volume2 size={16} className="text-orange-300" /></div>))}</div>}
               </div>
             </div>
           </div>
@@ -1081,36 +956,16 @@ const StudentApp = ({ currentUser, onLogout, updateUserData, lang, setLang }) =>
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 font-sans max-w-lg mx-auto border-x border-gray-200">
-      <header className="bg-white px-6 py-4 shadow-sm z-10 border-b border-gray-100">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-black text-indigo-900 flex items-center gap-2"><School className="text-indigo-500" size={24} /> {t.app_name}</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs font-bold text-white bg-indigo-500 px-2 py-0.5 rounded-full">{t.level} {level}</span>
-              <div className="w-20 bg-gray-200 rounded-full h-2"><div className="bg-yellow-400 h-2 rounded-full" style={{ width: `${Math.min((xp / (level * 100)) * 100, 100)}%` }}></div></div>
-              <span className="text-xs text-gray-400 ml-1">{currentUser.name}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <LanguageToggle lang={lang} setLang={setLang} />
-            <button onClick={onLogout} className="w-9 h-9 bg-gray-50 rounded-full flex items-center justify-center hover:bg-red-50 text-gray-400 hover:text-red-400 transition-colors"><LogOut size={18} /></button>
-          </div>
-        </div>
-      </header>
-      <main className="flex-1 overflow-y-auto p-4 pb-24 scrollbar-hide">{renderContent()}</main>
-      <nav className="fixed bottom-0 max-w-lg w-full bg-white/90 backdrop-blur-md border-t border-gray-100 flex justify-around p-2 pb-5 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] z-20">
-        <TabButton active={activeTab === 'mypage'} onClick={() => setActiveTab('mypage')} icon={User} label={t.tab_mypage} />
-        <TabButton active={activeTab === 'game'} onClick={() => setActiveTab('game')} icon={Gamepad2} label={t.tab_game} />
-        <TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')} icon={RefreshCw} label={t.tab_review} />
-        <TabButton active={activeTab === 'vocab'} onClick={() => setActiveTab('vocab')} icon={BookOpen} label={t.tab_vocab} />
-        <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={MessageCircle} label={t.tab_chat} />
-      </nav>
+    <div className="min-h-screen bg-gray-100 flex justify-center items-center p-0 sm:p-4">
+      <div className="w-full max-w-4xl h-full sm:h-[850px] bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative flex flex-col">
+        <header className="bg-white px-6 py-4 shadow-sm z-10 border-b border-gray-100 flex justify-between items-center"><div><h1 className="text-xl font-black text-indigo-900 flex items-center gap-2"><School className="text-indigo-500" size={24} /> {t.app_name}</h1><div className="flex items-center gap-2 mt-1"><span className="text-xs font-bold text-white bg-indigo-500 px-2 py-0.5 rounded-full">{t.level} {level}</span><div className="w-20 bg-gray-200 rounded-full h-2"><div className="bg-yellow-400 h-2 rounded-full" style={{ width: `${Math.min((xp / (level * 100)) * 100, 100)}%` }}></div></div><span className="text-xs text-gray-400 ml-1">{currentUser.name}</span></div></div><div className="flex items-center gap-2"><LanguageToggle lang={lang} setLang={setLang} /><button onClick={onLogout} className="w-9 h-9 bg-gray-50 rounded-full flex items-center justify-center hover:bg-red-50 text-gray-400 hover:text-red-400 transition-colors"><LogOut size={18} /></button></div></header>
+        <main className="flex-1 overflow-y-auto p-4 pb-24 scrollbar-hide">{renderContent()}</main>
+        <nav className="fixed bottom-0 max-w-4xl w-full bg-white/90 backdrop-blur-md border-t border-gray-100 flex justify-around p-2 pb-5 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] z-20 rounded-b-3xl"><TabButton active={activeTab === 'mypage'} onClick={() => setActiveTab('mypage')} icon={User} label={t.tab_mypage} /><TabButton active={activeTab === 'game'} onClick={() => setActiveTab('game')} icon={Gamepad2} label={t.tab_game} /><TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')} icon={RefreshCw} label={t.tab_review} /><TabButton active={activeTab === 'vocab'} onClick={() => setActiveTab('vocab')} icon={BookOpen} label={t.tab_vocab} /><TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={MessageCircle} label={t.tab_chat} /></nav>
+      </div>
     </div>
   );
 };
 
-// 4. MAIN APP CONTAINER
 export default function App() {
   const [user, setUser] = useState(null);
   const [lang, setLang] = useState('zh');
